@@ -1,0 +1,116 @@
+---
+title: "Coursera Practical Machine Learning Project"
+author: "Masamichi Kawarabayashi"
+date: "Dec 30, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+This is a report of final project of **Practical Machine Learning** course in Coursera.
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project.
+
+The goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+```{r library}
+library(caret)
+library(dplyr)
+library(randomForest)
+library(ggplot2)
+library(rattle)
+```
+
+## Read and clean up data
+
+Read data from the provided URL, replacing blanks and unexpected values to NA. Then create data set which columns has 5% less NA percentage. Also first 7 columns are removed because they are not used in this analysis.
+
+```{r data}
+training.org <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), header=TRUE, na.strings=c("NA","#DIV/0!",""))
+testing.org  <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), header=TRUE, na.strings=c("NA","#DIV/0!",""))
+str(training.org$class)
+dim(training.org); dim(testing.org)
+```
+
+```{r cleaning}
+training.org.clean <- select(training.org, which(as.logical(sapply(training.org, function(y) sum(is.na(y)))/dim(training.org)[1]<0.05)))
+testing.org.clean  <- select(testing.org, which(as.logical(sapply(testing.org, function(y) sum(is.na(y)))/dim(testing.org)[1]<0.05)))
+training.org.clean <- training.org.clean[, -c(1:7)]
+testing.org.clean <- testing.org.clean[, -c(1:7)]
+dim(training.org.clean); dim(testing.org.clean)
+inTrain <- createDataPartition(training.org.clean$classe, p=0.8, list=FALSE)
+training <- training.org.clean[inTrain,]
+testing <- training.org.clean[-inTrain,]
+```
+Now the cleaned training/test data have 53 columns. And training and test set are prepared.
+
+## Analysis with classification tree
+
+```{r ct1}
+set.seed(1960)
+model.ct <- train(classe~., data=training, method="rpart", trControl=trainControl(method="cv", number=5))
+fancyRpartPlot(model.ct$finalModel)
+```
+
+
+```{r ct2}
+pred.ct <- predict(model.ct, testing)
+confmt <- confusionMatrix(testing$classe, pred.ct)
+confmt$table
+confmt$overall["Accuracy"]
+```
+The accuracy is only 49%, so this model can not predict the outcome **classe** well.
+
+## Analysis with gradient boosting method
+
+```{r gbm1}
+set.seed(1960)
+model.gbm <- train(classe~., data=training, method="gbm", trControl=trainControl(method="cv", number=5), verbose=FALSE)
+model.gbm
+plot(model.gbm)
+```
+
+
+```{r gbm2}
+pred.gbm <- predict(model.gbm, testing)
+confmt <- confusionMatrix(testing$classe, pred.gbm)
+confmt$table
+confmt$overall["Accuracy"]
+```
+The accuracy is 96%, so this model can predict the outcome **classe** well.
+
+## Analysis with random forest
+
+```{r rf1}
+set.seed(1960)
+model.rf <- randomForest(classe~.,data=training,ntree=200,importance=TRUE)
+model.rf
+plot(model.rf)
+```
+
+
+```{r rf2}
+pred.rf <- predict(model.rf, testing)
+confmt <- confusionMatrix(testing$classe, pred.rf)
+confmt$table
+confmt$overall["Accuracy"]
+```
+The accuracy is 99.6%, so this model can predict the outcome **classe** well.
+
+### Important variables
+The importance of the variables are shown below.
+```{r iv}
+varImp(model.rf)
+```
+
+# Conclusion
+
+Based on the above trials, **random forest** model is the best one to predict it. So predict **classe** with original test (validation) data.
+
+```{r conclusion}
+pred.testing <- predict(model.rf, testing.org.clean)
+pred.testing
+```
